@@ -106,6 +106,7 @@
 #include <stdint.h>
 #include "../debugger.h"
 
+
 //6502 defines
 #define UNDOCUMENTED //when this is defined, undocumented opcodes are handled.
                      //otherwise, they're simply treated as NOPs.
@@ -148,20 +149,21 @@ extern void write6502(uint16_t address, uint8_t value);
 #include "support.h"
 #include "modes.h"
 
-static void (*addrtable[256])();
-static void (*optable[256])();
+//static void (*addrtable[256])();
+//static void (*optable[256])();
+static const uint8_t accumtable[256];
 
-static uint16_t getvalue() {
-    if (addrtable[opcode] == acc) return((uint16_t)a);
+INLINE uint16_t getvalue() {
+    if (accumtable[opcode]) return((uint16_t)a);
         else return((uint16_t)read6502(ea));
 }
 
-__attribute__((unused)) static uint16_t getvalue16() {
+__attribute__((unused)) inline uint16_t getvalue16() {
     return((uint16_t)read6502(ea) | ((uint16_t)read6502(ea+1) << 8));
 }
 
-static void putvalue(uint16_t saveval) {
-    if (addrtable[opcode] == acc) a = (uint8_t)(saveval & 0x00FF);
+INLINE void putvalue(uint16_t saveval) {
+    if (accumtable[opcode]) a = (uint8_t)(saveval & 0x00FF);
         else write6502(ea, (saveval & 0x00FF));
 }
 
@@ -204,14 +206,17 @@ void exec6502(uint32_t tickcount) {
         penaltyop = 0;
         penaltyaddr = 0;
 
-        (*addrtable[opcode])();
-        (*optable[opcode])();
+//        (*addrtable[opcode])();
+//        (*optable[opcode])();
+
+        OPCODE_SWITCH_TABLE
+
         clockticks6502 += ticktable[opcode];
         if (penaltyop && penaltyaddr) clockticks6502++;
 
         instructions++;
 
-        if (callexternal) (*loopexternal)();
+        //if (callexternal) (*loopexternal)();
     }
 }
 
@@ -228,15 +233,18 @@ void step6502() {
     penaltyop = 0;
     penaltyaddr = 0;
 
-    (*addrtable[opcode])();
-    (*optable[opcode])();
+//    (*addrtable[opcode])();    
+//    (*optable[opcode])();
+
+    OPCODE_SWITCH_TABLE
+
     clockticks6502 += ticktable[opcode];
     if (penaltyop && penaltyaddr) clockticks6502++;
     clockgoal6502 = clockticks6502;
 
     instructions++;
 
-    if (callexternal) (*loopexternal)();
+    //if (callexternal) (*loopexternal)();
 }
 
 void hookexternal(void *funcptr) {

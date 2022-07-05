@@ -20,6 +20,8 @@
 #define RAM_SIZE (0xa000 + num_ram_banks * 8192) /* $0000-$9FFF + banks at $A000-$BFFF */
 #define ROM_SIZE (NUM_ROM_BANKS * 16384)   /* banks at $C000-$FFFF */
 
+#define CRSY2790_VIDEO 1
+
 typedef enum {
 	ECHO_MODE_NONE,
 	ECHO_MODE_RAW,

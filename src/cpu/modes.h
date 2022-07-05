@@ -12,39 +12,45 @@
 //                      A 6502 has a bug whereby if you jmp ($12FF) it reads the address from
 //                      $12FF and $1200. This has been fixed in the 65C02. 
 //                      
-static void imp() { //implied
+#if !defined(_DEBUG) || defined(NDEBUG)
+#define INLINE inline
+#else
+#define INLINE static
+#endif
+
+INLINE void imp() { //implied
 }
 
-static void acc() { //accumulator
+INLINE void acc() { //accumulator
 }
 
-static void imm() { //immediate
+INLINE void imm() { //immediate
     ea = pc++;
 }
 
-static void zp() { //zero-page
+INLINE void zp() { //zero-page
     ea = (uint16_t)read6502((uint16_t)pc++);
 }
 
-static void zpx() { //zero-page,X
+INLINE void zpx() { //zero-page,X
     ea = ((uint16_t)read6502((uint16_t)pc++) + (uint16_t)x) & 0xFF; //zero-page wraparound
 }
 
-static void zpy() { //zero-page,Y
+INLINE void zpy() { //zero-page,Y
     ea = ((uint16_t)read6502((uint16_t)pc++) + (uint16_t)y) & 0xFF; //zero-page wraparound
 }
 
-static void rel() { //relative for branch ops (8-bit immediate value, sign-extended)
+INLINE void rel() { //relative for branch ops (8-bit immediate value, sign-extended)
     reladdr = (uint16_t)read6502(pc++);
     if (reladdr & 0x80) reladdr |= 0xFF00;
 }
 
-static void abso() { //absolute
+INLINE void abso() { //absolute
     ea = (uint16_t)read6502(pc) | ((uint16_t)read6502(pc+1) << 8);
     pc += 2;
 }
 
-static void absx() { //absolute,X
+INLINE void absx() { //absolute,X
     uint16_t startpage;
     ea = ((uint16_t)read6502(pc) | ((uint16_t)read6502(pc+1) << 8));
     startpage = ea & 0xFF00;
@@ -57,7 +63,7 @@ static void absx() { //absolute,X
     pc += 2;
 }
 
-static void absy() { //absolute,Y
+INLINE void absy() { //absolute,Y
     uint16_t startpage;
     ea = ((uint16_t)read6502(pc) | ((uint16_t)read6502(pc+1) << 8));
     startpage = ea & 0xFF00;
@@ -70,7 +76,7 @@ static void absy() { //absolute,Y
     pc += 2;
 }
 
-static void ind() { //indirect
+INLINE void ind() { //indirect
     uint16_t eahelp, eahelp2;
     eahelp = (uint16_t)read6502(pc) | (uint16_t)((uint16_t)read6502(pc+1) << 8);
     //
@@ -82,13 +88,13 @@ static void ind() { //indirect
     pc += 2;
 }
 
-static void indx() { // (indirect,X)
+INLINE void indx() { // (indirect,X)
     uint16_t eahelp;
     eahelp = (uint16_t)(((uint16_t)read6502(pc++) + (uint16_t)x) & 0xFF); //zero-page wraparound for table pointer
     ea = (uint16_t)read6502(eahelp & 0x00FF) | ((uint16_t)read6502((eahelp+1) & 0x00FF) << 8);
 }
 
-static void indy() { // (indirect),Y
+INLINE void indy() { // (indirect),Y
     uint16_t eahelp, eahelp2, startpage;
     eahelp = (uint16_t)read6502(pc++);
     eahelp2 = (eahelp & 0xFF00) | ((eahelp + 1) & 0x00FF); //zero-page wraparound
@@ -101,7 +107,7 @@ static void indy() { // (indirect),Y
     }
 }
 
-static void zprel() { // zero-page, relative for branch ops (8-bit immediatel value, sign-extended)
+INLINE void zprel() { // zero-page, relative for branch ops (8-bit immediatel value, sign-extended)
 	ea = (uint16_t)read6502(pc);
 	reladdr = (uint16_t)read6502(pc+1);
 	if (reladdr & 0x80) reladdr |= 0xFF00;

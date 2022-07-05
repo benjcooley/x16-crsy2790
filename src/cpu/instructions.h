@@ -14,6 +14,12 @@
 //
 //          instruction handler functions
 //
+#if !defined(_DEBUG) || defined(NDEBUG)
+#define INLINE inline
+#else
+#define INLINE static
+#endif
+
 static void adc() {
     penaltyop = 1;
     #ifndef NES_CPU
@@ -56,7 +62,7 @@ static void adc() {
     saveaccum(result);
 }
 
-static void and() {
+INLINE void and() {
     penaltyop = 1;
     value = getvalue();
     result = (uint16_t)a & value;
@@ -67,7 +73,7 @@ static void and() {
     saveaccum(result);
 }
 
-static void asl() {
+INLINE void asl() {
     value = getvalue();
     result = value << 1;
 
@@ -78,7 +84,7 @@ static void asl() {
     putvalue(result);
 }
 
-static void bcc() {
+INLINE void bcc() {
     if ((status & FLAG_CARRY) == 0) {
         oldpc = pc;
         pc += reladdr;
@@ -87,7 +93,7 @@ static void bcc() {
     }
 }
 
-static void bcs() {
+INLINE void bcs() {
     if ((status & FLAG_CARRY) == FLAG_CARRY) {
         oldpc = pc;
         pc += reladdr;
@@ -96,7 +102,7 @@ static void bcs() {
     }
 }
 
-static void beq() {
+INLINE void beq() {
     if ((status & FLAG_ZERO) == FLAG_ZERO) {
         oldpc = pc;
         pc += reladdr;
@@ -105,7 +111,7 @@ static void beq() {
     }
 }
 
-static void bit() {
+INLINE void bit() {
     value = getvalue();
     result = (uint16_t)a & value;
 
@@ -113,7 +119,7 @@ static void bit() {
     status = (status & 0x3F) | (uint8_t)(value & 0xC0);
 }
 
-static void bmi() {
+INLINE void bmi() {
     if ((status & FLAG_SIGN) == FLAG_SIGN) {
         oldpc = pc;
         pc += reladdr;
@@ -122,7 +128,7 @@ static void bmi() {
     }
 }
 
-static void bne() {
+INLINE void bne() {
     if ((status & FLAG_ZERO) == 0) {
         oldpc = pc;
         pc += reladdr;
@@ -131,7 +137,7 @@ static void bne() {
     }
 }
 
-static void bpl() {
+INLINE void bpl() {
     if ((status & FLAG_SIGN) == 0) {
         oldpc = pc;
         pc += reladdr;
@@ -140,7 +146,7 @@ static void bpl() {
     }
 }
 
-static void brk() {
+INLINE void brk() {
     pc++;
 
 
@@ -151,7 +157,7 @@ static void brk() {
     pc = (uint16_t)read6502(0xFFFE) | ((uint16_t)read6502(0xFFFF) << 8);
 }
 
-static void bvc() {
+INLINE void bvc() {
     if ((status & FLAG_OVERFLOW) == 0) {
         oldpc = pc;
         pc += reladdr;
@@ -160,7 +166,7 @@ static void bvc() {
     }
 }
 
-static void bvs() {
+INLINE void bvs() {
     if ((status & FLAG_OVERFLOW) == FLAG_OVERFLOW) {
         oldpc = pc;
         pc += reladdr;
@@ -169,23 +175,23 @@ static void bvs() {
     }
 }
 
-static void clc() {
+INLINE void clc() {
     clearcarry();
 }
 
-static void cld() {
+INLINE void cld() {
     cleardecimal();
 }
 
-static void cli() {
+INLINE void cli() {
     clearinterrupt();
 }
 
-static void clv() {
+INLINE void clv() {
     clearoverflow();
 }
 
-static void cmp() {
+INLINE void cmp() {
     penaltyop = 1;
     value = getvalue();
     result = (uint16_t)a - value;
@@ -197,7 +203,7 @@ static void cmp() {
     signcalc(result);
 }
 
-static void cpx() {
+INLINE void cpx() {
     value = getvalue();
     result = (uint16_t)x - value;
 
@@ -208,7 +214,7 @@ static void cpx() {
     signcalc(result);
 }
 
-static void cpy() {
+INLINE void cpy() {
     value = getvalue();
     result = (uint16_t)y - value;
 
@@ -219,7 +225,7 @@ static void cpy() {
     signcalc(result);
 }
 
-static void dec() {
+INLINE void dec() {
     value = getvalue();
     result = value - 1;
 
@@ -229,21 +235,21 @@ static void dec() {
     putvalue(result);
 }
 
-static void dex() {
+INLINE void dex() {
     x--;
 
     zerocalc(x);
     signcalc(x);
 }
 
-static void dey() {
+INLINE void dey() {
     y--;
 
     zerocalc(y);
     signcalc(y);
 }
 
-static void eor() {
+INLINE void eor() {
     penaltyop = 1;
     value = getvalue();
     result = (uint16_t)a ^ value;
@@ -254,7 +260,7 @@ static void eor() {
     saveaccum(result);
 }
 
-static void inc() {
+INLINE void inc() {
     value = getvalue();
     result = value + 1;
 
@@ -264,30 +270,30 @@ static void inc() {
     putvalue(result);
 }
 
-static void inx() {
+INLINE void inx() {
     x++;
 
     zerocalc(x);
     signcalc(x);
 }
 
-static void iny() {
+INLINE void iny() {
     y++;
 
     zerocalc(y);
     signcalc(y);
 }
 
-static void jmp() {
+INLINE void jmp() {
     pc = ea;
 }
 
-static void jsr() {
+INLINE void jsr() {
     push16(pc - 1);
     pc = ea;
 }
 
-static void lda() {
+INLINE void lda() {
     penaltyop = 1;
     value = getvalue();
     a = (uint8_t)(value & 0x00FF);
@@ -296,7 +302,7 @@ static void lda() {
     signcalc(a);
 }
 
-static void ldx() {
+INLINE void ldx() {
     penaltyop = 1;
     value = getvalue();
     x = (uint8_t)(value & 0x00FF);
@@ -305,7 +311,7 @@ static void ldx() {
     signcalc(x);
 }
 
-static void ldy() {
+INLINE void ldy() {
     penaltyop = 1;
     value = getvalue();
     y = (uint8_t)(value & 0x00FF);
@@ -314,7 +320,7 @@ static void ldy() {
     signcalc(y);
 }
 
-static void lsr() {
+INLINE void lsr() {
     value = getvalue();
     result = value >> 1;
 
@@ -326,7 +332,7 @@ static void lsr() {
     putvalue(result);
 }
 
-static void nop() {
+INLINE void nop() {
     switch (opcode) {
         case 0x1C:
         case 0x3C:
@@ -339,7 +345,7 @@ static void nop() {
     }
 }
 
-static void ora() {
+INLINE void ora() {
     penaltyop = 1;
     value = getvalue();
     result = (uint16_t)a | value;
@@ -350,26 +356,26 @@ static void ora() {
     saveaccum(result);
 }
 
-static void pha() {
+INLINE void pha() {
     push8(a);
 }
 
-static void php() {
+INLINE void php() {
     push8(status | FLAG_BREAK);
 }
 
-static void pla() {
+INLINE void pla() {
     a = pull8();
 
     zerocalc(a);
     signcalc(a);
 }
 
-static void plp() {
+INLINE void plp() {
     status = pull8() | FLAG_CONSTANT;
 }
 
-static void rol() {
+INLINE void rol() {
     value = getvalue();
     result = (value << 1) | (status & FLAG_CARRY);
 
@@ -380,7 +386,7 @@ static void rol() {
     putvalue(result);
 }
 
-static void ror() {
+INLINE void ror() {
     value = getvalue();
     result = (value >> 1) | ((status & FLAG_CARRY) << 7);
 
@@ -392,13 +398,13 @@ static void ror() {
     putvalue(result);
 }
 
-static void rti() {
+INLINE void rti() {
     status = pull8();
     value = pull16();
     pc = value;
 }
 
-static void rts() {
+INLINE void rts() {
     value = pull16();
     pc = value + 1;
 }
@@ -443,63 +449,63 @@ static void sbc() {
     saveaccum(result);
 }
 
-static void sec() {
+INLINE void sec() {
     setcarry();
 }
 
-static void sed() {
+INLINE void sed() {
     setdecimal();
 }
 
-static void sei() {
+INLINE void sei() {
     setinterrupt();
 }
 
-static void sta() {
+INLINE void sta() {
     putvalue(a);
 }
 
-static void stx() {
+INLINE void stx() {
     putvalue(x);
 }
 
-static void sty() {
+INLINE void sty() {
     putvalue(y);
 }
 
-static void tax() {
+INLINE void tax() {
     x = a;
 
     zerocalc(x);
     signcalc(x);
 }
 
-static void tay() {
+INLINE void tay() {
     y = a;
 
     zerocalc(y);
     signcalc(y);
 }
 
-static void tsx() {
+INLINE void tsx() {
     x = sp;
 
     zerocalc(x);
     signcalc(x);
 }
 
-static void txa() {
+INLINE void txa() {
     a = x;
 
     zerocalc(a);
     signcalc(a);
 }
 
-static void txs() {
+INLINE void txs() {
     sp = x;
 }
 
-static void tya() {
+INLINE void tya() {
     a = y;
 
     zerocalc(a);

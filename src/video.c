@@ -17,6 +17,21 @@
 #include "icon.h"
 #include "sdcard.h"
 
+#if CRSY2790_VIDEO
+
+#define HANDMADE_MATH_IMPLEMENTATION
+#define HANDMADE_MATH_NO_SSE
+#include "HandmadeMath.h"
+
+#if __APPLE__
+#define GL_SILENCE_DEPRECATION
+#endif
+#include <OpenGL/gl3.h>
+#define SOKOL_IMPL
+#define SOKOL_GLCORE33
+#include <sokol_gfx.h>
+#endif
+
 #include <limits.h>
 
 #ifdef __EMSCRIPTEN__
@@ -69,8 +84,14 @@
 
 
 static SDL_Window *window;
+#if CRSY2790_VIDEO
+static SDL_GLContext glcontext;
+static sg_pass_action sg_null_passaction;
+#define SG_CODE(...) #__VA_ARGS__
+#else
 static SDL_Renderer *renderer;
 static SDL_Texture *sdlTexture;
+#endif
 static bool is_fullscreen = false;
 
 static uint8_t video_ram[0x20000];
@@ -173,6 +194,246 @@ video_reset()
 	pcm_reset();
 }
 
+#if CRSY2790_VIDEO
+
+static sg_image sg_scrn_texture;
+static sg_bindings sg_scrn_bind;
+static sg_pipeline sg_scrn_pip;
+
+static void 
+screen_init()
+{
+	float vertices[] = {
+		-1.0f,  1.0f, 0.0, 0.0,
+		1.0f,  1.0f, 1.0, 0.0,
+		1.0f, -1.0f, 1.0, 1.0,
+		-1.0f, -1.0f, 0.0, 1.0,
+	};
+	sg_buffer vbuf = sg_make_buffer(&(sg_buffer_desc){
+		.data = SG_RANGE(vertices)
+	});
+
+	uint16_t indices[] = {
+		0, 1, 2,
+		0, 2, 3
+	};
+	sg_buffer ibuf = sg_make_buffer(&(sg_buffer_desc){
+		.type = SG_BUFFERTYPE_INDEXBUFFER,
+		.data = SG_RANGE(indices)
+	});
+
+    sg_scrn_texture = sg_make_image(&(sg_image_desc){
+		.width=SCREEN_WIDTH,
+		.height=SCREEN_HEIGHT,
+		.pixel_format = SG_PIXELFORMAT_RGBA8,
+		.usage = SG_USAGE_STREAM,
+		.min_filter = SG_FILTER_NEAREST,
+		.mag_filter = SG_FILTER_NEAREST
+  	});
+
+    sg_scrn_bind = (sg_bindings){
+        .vertex_buffers[0] = vbuf,
+        .index_buffer = ibuf,
+        .fs_images[0] = sg_scrn_texture
+    };
+
+	sg_shader shad = sg_make_shader(&(sg_shader_desc){
+		.fs.images[0] = {
+			.name="tex", 
+			.image_type=SG_IMAGETYPE_2D
+		},
+		.vs.source = "#version 330\n" SG_CODE(
+			layout(location = 0) in vec2 position;
+			layout(location = 1) in vec2 texcoord0;
+			out vec2 uv;
+			void main() 
+			{
+				gl_Position = vec4(position, 0.0, 1.0);
+				uv = texcoord0;
+			}
+		),
+		.fs.source = "#version 330\n" SG_CODE(
+			uniform sampler2D tex;
+			in vec2 uv;
+			out vec4 frag_color;
+			void main() 
+			{
+				vec4 color = texture(tex, uv);
+				frag_color = vec4(color.z, color.y, color.x, 1.0);
+			}
+		)
+	});
+
+    /* create pipeline object */
+    sg_scrn_pip = sg_make_pipeline(&(sg_pipeline_desc){
+		.shader = shad,
+        .index_type = SG_INDEXTYPE_UINT16,
+        .layout = {
+            .attrs = {
+                [0].format=SG_VERTEXFORMAT_FLOAT2,
+                [1].format=SG_VERTEXFORMAT_FLOAT2
+            }
+        }
+    });
+}
+
+static void
+screen_draw()
+{
+	sg_apply_pipeline(sg_scrn_pip);
+	sg_apply_bindings(&sg_scrn_bind);
+	sg_draw(0, 6, 1);
+}
+
+static sg_bindings sg_cube_bind;
+static sg_pipeline sg_cube_pip;
+
+typedef struct {
+    hmm_mat4 mvp;
+} cube_params_t;
+
+static hmm_mat4 cube_proj;
+static hmm_mat4 cube_view;
+static hmm_mat4 cube_view_proj;
+
+static cube_params_t cube_vs_params;
+float cube_rx = 0.0f, cube_ry = 0.0f;
+
+static void
+cube_init()
+{
+    /* cube vertex buffer */
+    float vertices[] = {
+        -1.0, -1.0, -1.0,   1.0, 0.0, 0.0, 1.0,
+         1.0, -1.0, -1.0,   1.0, 0.0, 0.0, 1.0,
+         1.0,  1.0, -1.0,   1.0, 0.0, 0.0, 1.0,
+        -1.0,  1.0, -1.0,   1.0, 0.0, 0.0, 1.0,
+
+        -1.0, -1.0,  1.0,   0.0, 1.0, 0.0, 1.0,
+         1.0, -1.0,  1.0,   0.0, 1.0, 0.0, 1.0,
+         1.0,  1.0,  1.0,   0.0, 1.0, 0.0, 1.0,
+        -1.0,  1.0,  1.0,   0.0, 1.0, 0.0, 1.0,
+
+        -1.0, -1.0, -1.0,   0.0, 0.0, 1.0, 1.0,
+        -1.0,  1.0, -1.0,   0.0, 0.0, 1.0, 1.0,
+        -1.0,  1.0,  1.0,   0.0, 0.0, 1.0, 1.0,
+        -1.0, -1.0,  1.0,   0.0, 0.0, 1.0, 1.0,
+
+        1.0, -1.0, -1.0,    1.0, 0.5, 0.0, 1.0,
+        1.0,  1.0, -1.0,    1.0, 0.5, 0.0, 1.0,
+        1.0,  1.0,  1.0,    1.0, 0.5, 0.0, 1.0,
+        1.0, -1.0,  1.0,    1.0, 0.5, 0.0, 1.0,
+
+        -1.0, -1.0, -1.0,   0.0, 0.5, 1.0, 1.0,
+        -1.0, -1.0,  1.0,   0.0, 0.5, 1.0, 1.0,
+         1.0, -1.0,  1.0,   0.0, 0.5, 1.0, 1.0,
+         1.0, -1.0, -1.0,   0.0, 0.5, 1.0, 1.0,
+
+        -1.0,  1.0, -1.0,   1.0, 0.0, 0.5, 1.0,
+        -1.0,  1.0,  1.0,   1.0, 0.0, 0.5, 1.0,
+         1.0,  1.0,  1.0,   1.0, 0.0, 0.5, 1.0,
+         1.0,  1.0, -1.0,   1.0, 0.0, 0.5, 1.0
+    };
+    sg_buffer vbuf = sg_make_buffer(&(sg_buffer_desc){
+        .data = SG_RANGE(vertices)
+    });
+
+    /* create an index buffer for the cube */
+    uint16_t indices[] = {
+        0, 1, 2,  0, 2, 3,
+        6, 5, 4,  7, 6, 4,
+        8, 9, 10,  8, 10, 11,
+        14, 13, 12,  15, 14, 12,
+        16, 17, 18,  16, 18, 19,
+        22, 21, 20,  23, 22, 20
+    };
+    sg_buffer ibuf = sg_make_buffer(&(sg_buffer_desc){
+        .type = SG_BUFFERTYPE_INDEXBUFFER,
+        .data = SG_RANGE(indices)
+    });
+
+    /* resource bindgs struct */
+    sg_cube_bind = (sg_bindings){
+        .vertex_buffers[0] = vbuf,
+        .index_buffer = ibuf
+    };
+
+    /* create shader */
+    sg_shader shd = sg_make_shader(&(sg_shader_desc) {
+        .vs.uniform_blocks[0] = {
+            .size = sizeof(cube_params_t),
+            .uniforms = {
+                [0] = { .name="mvp", .type=SG_UNIFORMTYPE_MAT4 }
+            }
+        },
+        /* NOTE: since the shader defines explicit attribute locations,
+           we don't need to provide an attribute name lookup table in the shader
+        */
+        .vs.source =
+            "#version 330\n"
+            "uniform mat4 mvp;\n"
+            "layout(location=0) in vec4 position;\n"
+            "layout(location=1) in vec4 color0;\n"
+            "out vec4 color;\n"
+            "void main() {\n"
+            "  gl_Position = mvp * position;\n"
+            "  color = color0;\n"
+            "}\n",
+        .fs.source =
+            "#version 330\n"
+            "in vec4 color;\n"
+            "out vec4 frag_color;\n"
+            "void main() {\n"
+            "  frag_color = color;\n"
+            "}\n"
+    });
+
+    /* create pipeline object */
+    sg_cube_pip = sg_make_pipeline(&(sg_pipeline_desc){
+        .layout = {
+            /* test to provide buffer stride, but no attr offsets */
+            .buffers[0].stride = 28,
+            .attrs = {
+                [0].format=SG_VERTEXFORMAT_FLOAT3,
+                [1].format=SG_VERTEXFORMAT_FLOAT4
+            }
+        },
+        .shader = shd,
+        .index_type = SG_INDEXTYPE_UINT16,
+        .depth = {
+            .compare = SG_COMPAREFUNC_LESS_EQUAL,
+            .write_enabled = true,
+        },
+        .cull_mode = SG_CULLMODE_BACK,
+    });
+
+	cube_proj = HMM_Perspective(60.0f, (float)SCREEN_WIDTH/(float)SCREEN_HEIGHT, 0.01f, 10.0f);
+	cube_view = HMM_LookAt(HMM_Vec3(0.0f, 1.5f, 6.0f), HMM_Vec3(0.0f, 0.0f, 0.0f), HMM_Vec3(0.0f, 1.0f, 0.0f));
+	cube_view_proj = HMM_MultiplyMat4(cube_proj, cube_view);
+
+	cube_rx = 0.0f;
+	cube_ry = 0.0f;	
+}
+
+static void
+cube_draw()
+{
+	cube_rx += 1.0f; cube_ry += 2.0f;
+	hmm_mat4 rxm = HMM_Rotate(cube_rx, HMM_Vec3(1.0f, 0.0f, 0.0f));
+	hmm_mat4 rym = HMM_Rotate(cube_ry, HMM_Vec3(0.0f, 1.0f, 0.0f));
+	hmm_mat4 model = HMM_MultiplyMat4(rxm, rym);
+
+	/* model-view-projection matrix for vertex shader */
+	cube_vs_params.mvp = HMM_MultiplyMat4(cube_view_proj, model);
+
+	sg_apply_pipeline(sg_cube_pip);
+	sg_apply_bindings(&sg_cube_bind);
+	sg_apply_uniforms(SG_SHADERSTAGE_VS, 0, &SG_RANGE(cube_vs_params));
+	sg_draw(0, 36, 1);
+}
+
+#endif
+
 bool
 video_init(int window_scale, char *quality)
 {
@@ -186,6 +447,30 @@ video_init(int window_scale, char *quality)
 	video_reset();
 
 	SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, quality);
+
+#if CRSY2790_VIDEO	
+    window_flags |= SDL_WINDOW_OPENGL;
+    SDL_GL_SetAttribute (SDL_GL_CONTEXT_FLAGS, SDL_GL_CONTEXT_FORWARD_COMPATIBLE_FLAG);
+    SDL_GL_SetAttribute (SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
+    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
+    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 3);
+    SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
+
+  	window = SDL_CreateWindow("Window",
+		SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED,
+		SCREEN_WIDTH * window_scale, SCREEN_HEIGHT * window_scale, window_flags);
+
+    glcontext = SDL_GL_CreateContext(window);
+    assert(glcontext);	
+
+    sg_setup(&(sg_desc) {0});
+    assert(sg_isvalid());	
+	
+	screen_init();
+	cube_init();
+
+	sg_null_passaction = (sg_pass_action){0};
+#else
 	SDL_CreateWindowAndRenderer(SCREEN_WIDTH * window_scale, SCREEN_HEIGHT * window_scale, window_flags, &window, &renderer);
 #ifndef __MORPHOS__
 	SDL_SetWindowResizable(window, true);
@@ -196,6 +481,7 @@ video_init(int window_scale, char *quality)
 									SDL_PIXELFORMAT_RGB888,
 									SDL_TEXTUREACCESS_STREAMING,
 									SCREEN_WIDTH, SCREEN_HEIGHT);
+#endif									
 
 	SDL_SetWindowTitle(window, "Commander X16");
 	SDL_SetWindowIcon(window, CommanderX16Icon());
@@ -217,9 +503,11 @@ video_init(int window_scale, char *quality)
 		}
 	}
 
+#if !CRSY2790_VIDEO
 	if (debugger_enabled) {
 		DEBUGInitUI(renderer);
 	}
+#endif
 
 	return true;
 }
@@ -1071,10 +1359,16 @@ video_update()
 		}
 	}
 
+#if CRSY2790_VIDEO
+	sg_update_image(sg_scrn_texture, &(sg_image_data){
+		.subimage[0][0] = SG_RANGE(framebuffer)
+	});
+#else
 	SDL_UpdateTexture(sdlTexture, NULL, framebuffer, SCREEN_WIDTH * 4);
+#endif
 
 	if (record_gif > RECORD_GIF_PAUSED) {
-		if(!GifWriteFrame(&gif_writer, framebuffer, SCREEN_WIDTH, SCREEN_HEIGHT, 2, 8, false)) {
+		if(!GifWriteFrame(&gif_writer, framebuffer, SCREEN_WIDTH, SCREEN_WIDTH, 2, 8, false)) {
 			// if that failed, stop recording
 			GifEnd(&gif_writer);
 			record_gif = RECORD_GIF_DISABLED;
@@ -1085,6 +1379,18 @@ video_update()
 		}
 	}
 
+#if CRSY2790_VIDEO
+	{
+		int w, h;
+		SDL_GL_GetDrawableSize(window, &w, &h);
+		sg_begin_default_pass(&sg_null_passaction, w, h);
+		screen_draw();
+		cube_draw();
+		sg_end_pass();
+		sg_commit();
+		SDL_GL_SwapWindow(window);
+	}
+#else
 	SDL_RenderClear(renderer);
 	SDL_RenderCopy(renderer, sdlTexture, NULL, NULL);
 
@@ -1092,9 +1398,10 @@ video_update()
 		DEBUGRenderDisplay(SCREEN_WIDTH, SCREEN_HEIGHT);
 		SDL_RenderPresent(renderer);
 		return true;
-	}
+	}	
 
 	SDL_RenderPresent(renderer);
+#endif
 
 	SDL_Event event;
 	while (SDL_PollEvent(&event)) {
@@ -1199,6 +1506,11 @@ video_update()
 void
 video_end()
 {
+#if CRSY2790_VIDEO
+    sg_shutdown();
+	SDL_GL_DeleteContext(glcontext);
+#endif
+
 	if (debugger_enabled) {
 		DEBUGFreeUI();
 	}
@@ -1208,7 +1520,9 @@ video_end()
 		record_gif = RECORD_GIF_DISABLED;
 	}
 
+#if !CRSY2790_VIDEO
 	SDL_DestroyRenderer(renderer);
+#endif
 	SDL_DestroyWindow(window);
 }
 
@@ -1479,3 +1793,72 @@ bool video_is_special_address(int addr)
 {
 	return addr >= 0x1F9C0;
 }
+
+#if 0
+
+
+    /* a vertex buffer */
+    const float vertices[] = {
+        // positions            // colors
+         0.0f,  0.5f, 0.5f,     1.0f, 0.0f, 0.0f, 1.0f,
+         0.5f, -0.5f, 0.5f,     0.0f, 1.0f, 0.0f, 1.0f,
+        -0.5f, -0.5f, 0.5f,     0.0f, 0.0f, 1.0f, 1.0f
+    };
+    sg_buffer vbuf = sg_make_buffer(&(sg_buffer_desc){
+        .data = SG_RANGE(vertices)
+    });
+
+    /* a shader */
+    sg_shader shd = sg_make_shader(&(sg_shader_desc){
+        .vs.source =
+            "#version 330\n"
+            "layout(location=0) in vec4 position;\n"
+            "layout(location=1) in vec4 color0;\n"
+            "out vec4 color;\n"
+            "void main() {\n"
+            "  gl_Position = position;\n"
+            "  color = color0;\n"
+            "}\n",
+        .fs.source =
+            "#version 330\n"
+            "in vec4 color;\n"
+            "out vec4 frag_color;\n"
+            "void main() {\n"
+            "  frag_color = color;\n"
+            "}\n"
+    });
+
+    /* a pipeline state object (default render states are fine for triangle) */
+    sg_pipeline pip = sg_make_pipeline(&(sg_pipeline_desc){
+        .shader = shd,
+        .layout = {
+            .attrs = {
+                [0].format=SG_VERTEXFORMAT_FLOAT3,
+                [1].format=SG_VERTEXFORMAT_FLOAT4
+            }
+        }
+    });
+
+    /* resource bindings */
+    sg_bindings bind = {
+        .vertex_buffers[0] = vbuf
+    };
+
+    /* default pass action (clear to grey) */
+    sg_pass_action pass_action = {0};
+
+    /* draw loop */
+    while (!glfwWindowShouldClose(w)) {
+        int cur_width, cur_height;
+        glfwGetFramebufferSize(w, &cur_width, &cur_height);
+        sg_begin_default_pass(&pass_action, cur_width, cur_height);
+        sg_apply_pipeline(pip);
+        sg_apply_bindings(&bind);
+        sg_draw(0, 3, 1);
+        sg_end_pass();
+        sg_commit();
+        glfwSwapBuffers(w);
+        glfwPollEvents();
+    }
+
+#endif

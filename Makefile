@@ -20,8 +20,8 @@ else
 	SDL2CONFIG=sdl2-config
 endif
 
-CFLAGS=-std=c99 -O3 -Wall -Werror -g $(shell $(SDL2CONFIG) --cflags) -Isrc/extern/include -Isrc/extern/src
-LDFLAGS=$(shell $(SDL2CONFIG) --libs) -lm
+CFLAGS=-std=c99 -O0 -Wall -Werror -g -D_DEBUG $(shell $(SDL2CONFIG) --cflags) -Isrc/extern/include -Isrc/extern/src
+LDFLAGS=$(shell $(SDL2CONFIG) --libs) -lm -framework OpenGL
 
 ODIR = build
 SDIR = src
